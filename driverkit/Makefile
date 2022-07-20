@@ -18,7 +18,27 @@ VERSIONS := $(patsubst config/%,%,$(sort $(dir $(wildcard config/*/))))
 VERSIONS := $(VERSIONS:/=)
 TARGET_VERSION ?= *
 TARGET_DISTRO ?= *
-TARGET_KERNEL ?= *
+
+# Backward compatibility. If the TARGET_KERNEL is set and there is a _ in it, we consider than the string contain the
+# release AND the version. If there is no _, then we only set the release with the string
+# This is using the same pattern as in the utils/generate script
+ifneq ($(TARGET_KERNEL),)
+ifneq (,$(findstring "_",$(TARGET_KERNEL)))
+TARGET_KERNEL_VERSION ?= $(shell KERNEL=${TARGET_KERNEL} && echo "$${KERNEL\#\#*_}" )
+TARGET_KERNEL_RELEASE ?= $(shell KERNEL=${TARGET_KERNEL} && KERNEL_V=${TARGET_KERNEL_VERSION} && echo "$${KERNEL%_$${KERNEL_V}}" )
+else
+TARGET_KERNEL_RELEASE = $(TARGET_KERNEL)
+endif
+endif
+
+# If empty: take all
+ifeq ($(TARGET_KERNEL_VERSION),)
+TARGET_KERNEL_VERSION = *
+endif
+ifeq ($(TARGET_KERNEL_RELEASE),)
+TARGET_KERNEL_RELEASE = *
+endif
+
 TARGET_ARCH ?= *
 TARGET_ARCHS := $(if $(call eq,$(TARGET_ARCH),*),$(ALL_ARCHS),$(TARGET_ARCH))
 TARGET_HEADERS ?=
@@ -31,9 +51,9 @@ validate: validate_old validate_new
 # because validate_old will always validate any old config.
 # Not a big deal because we were not going to filter for TARGET_ARCH in any case.
 # TODO: rm once old format support is dropped
-validate_old: $(patsubst config_%,validate/%,$(subst /,_,$(wildcard config/${TARGET_VERSION}*/${TARGET_DISTRO}_${TARGET_KERNEL}-*)))
+validate_old: $(patsubst config_%,validate/%,$(subst /,_,$(wildcard config/${TARGET_VERSION}*/${TARGET_DISTRO}_${TARGET_KERNEL_RELEASE}*_${TARGET_KERNEL_VERSION}.yaml)))
 # new fmt has $arch subfolders
-validate_new: $(patsubst config_%,validate/%,$(subst /,_,$(wildcard config/${TARGET_VERSION}*/${TARGET_ARCH}/${TARGET_DISTRO}_${TARGET_KERNEL}-*)))
+validate_new: $(patsubst config_%,validate/%,$(subst /,_,$(wildcard config/${TARGET_VERSION}*/${TARGET_ARCH}/${TARGET_DISTRO}_${TARGET_KERNEL_RELEASE}*_${TARGET_KERNEL_VERSION}.yaml)))
 
 all: $(patsubst config_%,%,$(subst /,_,$(CONFIGS)))
 
@@ -42,9 +62,9 @@ specific_target: specific_target_old specific_target_new
 # because specific_target_old will always build any old config.
 # Not a big deal because we were not going to filter for TARGET_ARCH in any case.
 # TODO: rm once old format support is dropped
-specific_target_old: $(patsubst config_%,%,$(subst /,_,$(wildcard config/${TARGET_VERSION}*/${TARGET_DISTRO}_${TARGET_KERNEL}-*)))
+specific_target_old: $(patsubst config_%,%,$(subst /,_,$(wildcard config/${TARGET_VERSION}*/${TARGET_DISTRO}_${TARGET_KERNEL_RELEASE}*_${TARGET_KERNEL_VERSION}.yaml)))
 # new fmt has $arch subfolders
-specific_target_new: $(patsubst config_%,%,$(subst /,_,$(wildcard config/${TARGET_VERSION}*/${TARGET_ARCH}/${TARGET_DISTRO}_${TARGET_KERNEL}-*)))
+specific_target_new: $(patsubst config_%,%,$(subst /,_,$(wildcard config/${TARGET_VERSION}*/${TARGET_ARCH}/${TARGET_DISTRO}_${TARGET_KERNEL_RELEASE}*_${TARGET_KERNEL_VERSION}.yaml)))
 
 prepare: $(addprefix prepare_,$(VERSIONS))
 publish: publish_s3 # alias publish_s3; artifactory is no more supported
@@ -53,7 +73,7 @@ publish_s3: $(addprefix publish_s3_,$(VERSIONS))
 generate:
 	$(foreach ARCH,$(TARGET_ARCHS),\
 		$(foreach VERSION,$(VERSIONS),\
-			utils/generate -a '$(ARCH)' -k '${TARGET_KERNEL}' -d '${TARGET_DISTRO}' -h '${TARGET_HEADERS}' -v '${VERSION}'; \
+			utils/generate -a '$(ARCH)' -k '${TARGET_KERNEL_RELEASE}_${TARGET_KERNEL_VERSION}' -d '${TARGET_DISTRO}' -h '${TARGET_HEADERS}' -v '${VERSION}'; \
 		)\
 	)
 
